@@ -1,0 +1,14 @@
+az login
+
+az account set -s [YOUR-AZURE-SUBSCRIPTION-ID]
+
+az group create --name [YOUR-RESOURCE-GROUP-NAME] --location eastus
+
+az deployment group create -g [YOUR-RESOURCE-GROUP-NAME] --template-file azuredeploy.json --parameters azuredeploy.parameters.json
+
+
+
+####
+cd ..\src
+dotnet build
+func azure functionapp publish [YOURE-FUNCTION-APP-NAME] --force --csharp
