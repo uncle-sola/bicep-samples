@@ -122,3 +122,5 @@ The following DNS zones are created in this sample:
 
 
 dotnet --list-runtimes to see installed runtimes
+
+[Original Repo ](https://github.com/mcollier/azure-functions-private-storage)

@@ -2,6 +2,7 @@ param virtualMachineAdminUsername string
 
 @secure()
 param virtualMachineAdminPassword string
+
 param cosmosDbDatabaseName string
 param cosmosDbContainerName string
 param blobContainerName string
@@ -9,9 +10,9 @@ param deploySourceCode bool = false
 param location string = resourceGroup().location
 param function_repo_url string
 param virtualNetworkAddressPrefix string = '10.100.0.0/16'
-param virtualMachineSubnetAddressPrefix string = '10.100.2.0/24'
-param functionSubnetAddressPrefix string = '10.100.0.0/24'
+param virtualMachineSubnetAddressPrefix string = '10.100.0.0/24'
 param privateEndpointSubnetAddressPrefix string = '10.100.1.0/24'
+param functionSubnetAddressPrefix string = '10.100.2.0/24'
 
 var uniqueStringId = uniqueString(resourceGroup().id)
 var appServicePlanName_var = '${uniqueStringId}-asp'
@@ -30,7 +31,7 @@ var privateEndpointWebJobsBlobStorageName_var = '${uniqueStringId}-wjsa-blob-pri
 var privateEndpointWebJobsFileStorageName_var = '${uniqueStringId}-wjsa-file-private-endpoint'
 var privateStorageQueueDnsZoneName_var = 'privatelink.queue.${environment().suffixes.storage}'
 var privateStorageBlobDnsZoneName_var = 'privatelink.blob.${environment().suffixes.storage}'
-var privateStorageTableDnsZoneName_var = 'privatelink.table${environment().suffixes.storage}'
+var privateStorageTableDnsZoneName_var = 'privatelink.table.${environment().suffixes.storage}'
 var privateStorageFileDnsZoneName_var = 'privatelink.file.${environment().suffixes.storage}'
 var privateCosmosDbDnsZoneName_var = 'privatelink.documents.azure.com'
 var vmDiagnosticStorageAccountName_var = '${uniqueStringId}vmdiag'
@@ -39,65 +40,137 @@ var vmNicName_var = '${uniqueStringId}-vm-nic'
 var vmSubnetName = '${uniqueStringId}-subnet-vm'
 var vmNsgName_var = '${uniqueStringId}-vm-nsg'
 var privateCosmosDbAccountName_var = '${uniqueStringId}-cosmosdb-private'
-var publicIPAddressName_var = '${uniqueStringId}-bastion-pip'
+var publicIPAddressName_var = '${uniqueStringId}-public-ip'
 var dnsLabelPrefix = 'a${uniqueStringId}-vm'
 var appInsightsResourceId = applicationInsightsName.id
 
-resource vnetName 'Microsoft.Network/virtualNetworks@2019-11-01' = {
-  location: location
+
+// vnet creation
+module vnetName 'modules/vnet/virtualNetwork.bicep' = {
   name: vnetName_var
-  properties: {
-    addressSpace: {
-      addressPrefixes: [
-        virtualNetworkAddressPrefix
-      ]
-    }
-    subnets: [
-      {
-        name: functionsSubnetName
-        properties: {
-          addressPrefix: functionSubnetAddressPrefix
-          privateEndpointNetworkPolicies: 'Enabled'
-          privateLinkServiceNetworkPolicies: 'Enabled'
-          delegations: [
-            {
-              name: 'webapp'
-              properties: {
-                serviceName: 'Microsoft.Web/serverFarms'
-                actions: [
-                  'Microsoft.Network/virtualNetworks/subnets/action'
-                ]
-              }
-            }
-          ]
-        }
-      }
-      {
-        name: privateEndpointSubnetName
-        properties: {
-          addressPrefix: privateEndpointSubnetAddressPrefix
-          privateLinkServiceNetworkPolicies: 'Enabled'
-          privateEndpointNetworkPolicies: 'Disabled'
-        }
-      }
-      {
-        name: vmSubnetName
-        properties: {
-          addressPrefix: virtualMachineSubnetAddressPrefix
-          networkSecurityGroup: {
-            id: vmNsgName.id
-          }
-          delegations: []
-          serviceEndpoints: []
-          privateLinkServiceNetworkPolicies: 'Enabled'
-          privateEndpointNetworkPolicies: 'Disabled'
-        }
-      }
-    ]
-    virtualNetworkPeerings: []
-    enableDdosProtection: false
-    enableVmProtection: false
+  params:{
+   location: location
+    virtualNetworkAddressPrefix: virtualNetworkAddressPrefix
+    vnetName: vnetName_var
   }
+}
+// vnet creation
+
+
+// start of vm and related resoiurces 
+
+module vmNsgName 'modules/vmAndNetwork/networkSecurityGroup.bicep' = {
+  name: vmNsgName_var
+  params:{
+    allowOrDeny: 'Allow'
+    location: location
+    vmNsgName_var: vmNsgName_var
+  }
+}
+
+
+module vmSubnet 'modules/vmAndNetwork/vmSubnet.bicep' = {
+  name: vmSubnetName
+  params:{
+    vmSubnetAddressPrefix: virtualMachineSubnetAddressPrefix
+    vmSubnetName: vmSubnetName
+    vnetName: vnetName_var
+    vmNsgNameId: vmNsgName.outputs.resourceId
+  }
+  dependsOn:[
+    vnetName
+    vmNsgName
+  ]
+}
+
+module publicIPAddressName 'modules/vmAndNetwork/publicIpAddress.bicep' = {
+  name: publicIPAddressName_var
+  params:{
+    location: location
+    dnsLabelPrefix: dnsLabelPrefix
+    publicIPAddressName_var: publicIPAddressName_var
+  }
+}
+
+
+module vmNicName 'modules/vmAndNetwork/networkInterface.bicep' = {
+  name: vmNicName_var
+  params:{
+    location: location
+    publicIpAddress: publicIPAddressName.outputs.ResourceId
+    vmNicName_var: vmNicName_var
+    vmSubnetName: vmSubnetName
+    vnetName: vnetName_var
+  }
+  dependsOn: [
+    vnetName
+    vmSubnet
+  ]
+}
+
+
+module vmDiagnosticStorageAccountName 'modules/vmAndNetwork/vmDiagnosticStorageAccount.bicep' = {
+  name: vmDiagnosticStorageAccountName_var
+  params:{
+    location: location
+    vmDiagnosticStorageAccountName_var: vmDiagnosticStorageAccountName_var
+  }
+}
+
+module virtualMachineName 'modules/vmAndNetwork/virtualMachine.bicep' = {
+  name: virtualMachineName_var
+
+  params:{
+    location: location
+    storageUri: vmDiagnosticStorageAccountName.outputs.proerties.primaryEndpoints.blob
+    virtualMachineAdminPassword: virtualMachineAdminPassword
+    virtualMachineAdminUsername: virtualMachineAdminUsername
+    virtualMachineName_var: virtualMachineName_var
+    vmNicName_var: vmNicName_var
+  }
+  dependsOn: [
+    vmNicName
+  ]
+}
+
+module shutdown_computevm_virtualMachineName 'modules/vmAndNetwork/vmShutDown.bicep' = {
+  name: 'shutdown-computevm-${virtualMachineName_var}'
+
+  params:{
+    location: location
+    targetResourceId: virtualMachineName.outputs.ResourceId
+    virtualMachineName_var: virtualMachineName_var
+  }
+}
+
+// end of VM and vm related resources
+
+
+module functionSubnet 'modules/functionsAndTools/functionSubnet.bicep' = {
+  name: functionsSubnetName
+  params:{
+    functionSubnetAddressPrefix: functionSubnetAddressPrefix
+    functionSubnetName: functionsSubnetName
+    vnetName: vnetName_var
+  }
+  dependsOn:[
+    vnetName
+    vmSubnet
+  ]
+}
+
+module privateEndpointSubnet 'modules/privateEndpoints/privateEndPointSubnet.bicep' = {
+  name: privateEndpointSubnetName
+  params:{
+    privateEndpointSubnetAddressPrefix: privateEndpointSubnetAddressPrefix
+    privateEndpointSubnetName: privateEndpointSubnetName
+    vnetName: vnetName_var
+  }
+  dependsOn:[
+    vnetName
+    vmSubnet
+    functionSubnet
+  ]
 }
 
 resource censusDataStorageAccountName 'Microsoft.Storage/storageAccounts@2019-06-01' = {
@@ -179,16 +252,6 @@ resource functionWebJobsStorageAccountName_default_myfunctionfiles 'Microsoft.St
   ]
 }
 
-resource vmDiagnosticStorageAccountName 'Microsoft.Storage/storageAccounts@2019-04-01' = {
-  name: vmDiagnosticStorageAccountName_var
-  location: location
-  sku: {
-    name: 'Standard_LRS'
-  }
-  kind: 'Storage'
-  properties: {
-  }
-}
 
 resource privateCosmosDbAccountName 'Microsoft.DocumentDB/databaseAccounts@2021-01-15' = {
   name: privateCosmosDbAccountName_var
@@ -254,66 +317,6 @@ resource privateCosmosDbAccountName_cosmosDbDatabaseName_cosmosDbContainerName '
   }
 }
 
-resource virtualMachineName 'Microsoft.Compute/virtualMachines@2019-03-01' = {
-  name: virtualMachineName_var
-  location: location
-  properties: {
-    hardwareProfile: {
-      vmSize: 'Standard_B2s'
-    }
-    osProfile: {
-      computerName: virtualMachineName_var
-      adminUsername: virtualMachineAdminUsername
-      adminPassword: virtualMachineAdminPassword
-    }
-    storageProfile: {
-      imageReference: {
-        publisher: 'MicrosoftWindowsDesktop'
-        offer: 'Windows-10'
-        sku: 'win10-21h2-pro-g2'
-        version: 'latest'
-      }
-      osDisk: {
-        createOption: 'FromImage'
-      }
-    }
-    networkProfile: {
-      networkInterfaces: [
-        {
-          id: resourceId('Microsoft.Nework/networkInterfaces', vmNicName_var)
-        }
-      ]
-    }
-    diagnosticsProfile: {
-      bootDiagnostics: {
-        enabled: true
-        storageUri: vmDiagnosticStorageAccountName.properties.primaryEndpoints.blob
-      }
-    }
-  }
-  dependsOn: [
-
-    vmNicName
-  ]
-}
-
-resource shutdown_computevm_virtualMachineName 'Microsoft.DevTestLab/schedules@2018-09-15' = {
-  name: 'shutdown-computevm-${virtualMachineName_var}'
-  location: location
-  properties: {
-    status: 'Enabled'
-    taskType: 'ComputeVmShutdownTask'
-    dailyRecurrence: {
-      time: '1900'
-    }
-    timeZoneId: 'UTC'
-    notificationSettings: {
-      status: 'Disabled'
-    }
-    targetResourceId: virtualMachineName.id
-  }
-}
-
 resource applicationInsightsName 'Microsoft.Insights/components@2015-05-01' = {
   location: location
   name: applicationInsightsName_var
@@ -355,9 +358,12 @@ resource privateStorageQueueDnsZoneName_privateStorageQueueDnsZoneName_link 'Mic
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: vnetName.id
+      id: vnetName.outputs.resourceId
     }
   }
+  dependsOn: [
+    vnetName
+  ]
 }
 
 resource privateStorageTableDnsZoneName_privateStorageTableDnsZoneName_link 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2018-09-01' = {
@@ -367,9 +373,12 @@ resource privateStorageTableDnsZoneName_privateStorageTableDnsZoneName_link 'Mic
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: vnetName.id
+      id: vnetName.outputs.resourceId
     }
   }
+  dependsOn: [
+    vnetName
+  ]
 }
 
 resource privateStorageBlobDnsZoneName_privateStorageBlobDnsZoneName_link 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2018-09-01' = {
@@ -379,9 +388,12 @@ resource privateStorageBlobDnsZoneName_privateStorageBlobDnsZoneName_link 'Micro
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: vnetName.id
+      id: vnetName.outputs.resourceId
     }
   }
+  dependsOn: [
+    vnetName
+  ]
 }
 
 resource privateStorageFileDnsZoneName_privateStorageFileDnsZoneName_link 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2018-09-01' = {
@@ -391,9 +403,12 @@ resource privateStorageFileDnsZoneName_privateStorageFileDnsZoneName_link 'Micro
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: vnetName.id
+      id: vnetName.outputs.resourceId
     }
   }
+  dependsOn: [
+    vnetName
+  ]
 }
 
 resource privateCosmosDbDnsZoneName_privateCosmosDbDnsZoneName_link 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2018-09-01' = {
@@ -403,9 +418,12 @@ resource privateCosmosDbDnsZoneName_privateCosmosDbDnsZoneName_link 'Microsoft.N
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: vnetName.id
+      id: vnetName.outputs.resourceId
     }
   }
+  dependsOn: [
+    vnetName
+  ]
 }
 
 resource privateEndpointStorageBlobName 'Microsoft.Network/privateEndpoints@2019-11-01' = {
@@ -428,8 +446,8 @@ resource privateEndpointStorageBlobName 'Microsoft.Network/privateEndpoints@2019
     ]
   }
   dependsOn: [
-
     vnetName
+    privateEndpointSubnet
   ]
 }
 
@@ -469,7 +487,7 @@ resource privateEndpointWebJobsQueueStorageName 'Microsoft.Network/privateEndpoi
     ]
   }
   dependsOn: [
-
+    privateEndpointSubnet
     vnetName
   ]
 }
@@ -510,8 +528,8 @@ resource privateEndpointWebJobsTableStorageName 'Microsoft.Network/privateEndpoi
     ]
   }
   dependsOn: [
-
     vnetName
+    privateEndpointSubnet
   ]
 }
 
@@ -551,7 +569,7 @@ resource privateEndpointWebJobsBlobStorageName 'Microsoft.Network/privateEndpoin
     ]
   }
   dependsOn: [
-
+    privateEndpointSubnet
     vnetName
   ]
 }
@@ -592,7 +610,7 @@ resource privateEndpointWebJobsFileStorageName 'Microsoft.Network/privateEndpoin
     ]
   }
   dependsOn: [
-
+    privateEndpointSubnet
     vnetName
   ]
 }
@@ -633,7 +651,7 @@ resource privateEndpointCosmosDbName 'Microsoft.Network/privateEndpoints@2019-11
     ]
   }
   dependsOn: [
-
+    privateEndpointSubnet
     vnetName
   ]
 }
@@ -654,67 +672,9 @@ resource privateEndpointCosmosDbName_default 'Microsoft.Network/privateEndpoints
   }
 }
 
-resource vmNicName 'Microsoft.Network/networkInterfaces@2018-11-01' = {
-  name: vmNicName_var
-  location: location
-  properties: {
-    ipConfigurations: [
-      {
-        name: 'ipconfig1'
-        properties: {
-          privateIPAllocationMethod: 'Dynamic'
-          publicIPAddress: {
-            id: publicIPAddressName.id
-          }
-          subnet: {
-            id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName_var, vmSubnetName)
-          }
-        }
-      }
-    ]
-  }
-  dependsOn: [
-    vnetName
 
-  ]
-}
 
-resource publicIPAddressName 'Microsoft.Network/publicIPAddresses@2018-11-01' = {
-  name: publicIPAddressName_var
-  location: location
-  sku: {
-    name: 'Standard'
-  }
-  properties: {
-    publicIPAllocationMethod: 'Static'
-    dnsSettings: {
-      domainNameLabel: dnsLabelPrefix
-    }
-  }
-}
 
-resource vmNsgName 'Microsoft.Network/networkSecurityGroups@2019-04-01' = {
-  name: vmNsgName_var
-  location: location
-  properties: {
-    securityRules: [
-      {
-        name: 'Allow_RDP_Internet'
-        properties: {
-          description: 'Allow RDP'
-          protocol: 'Tcp'
-          sourcePortRange: '*'
-          destinationPortRange: '3389'
-          sourceAddressPrefix: 'Internet'
-          destinationAddressPrefix: '*'
-          access: 'Allow'
-          priority: 101
-          direction: 'Inbound'
-        }
-      }
-    ]
-  }
-}
 
 resource appServicePlanName 'Microsoft.Web/serverfarms@2018-02-01' = {
   name: appServicePlanName_var
@@ -808,6 +768,10 @@ resource functionAppName 'Microsoft.Web/sites@2018-11-01' = {
       ]
     }
   }
+  dependsOn:[
+    functionSubnet
+    vnetName
+  ]
 }
 
 resource functionAppName_virtualNetwork 'Microsoft.Web/sites/networkConfig@2019-08-01' = {
@@ -818,7 +782,7 @@ resource functionAppName_virtualNetwork 'Microsoft.Web/sites/networkConfig@2019-
     isSwift: true
   }
   dependsOn: [
-
+    functionSubnet
     vnetName
   ]
 }
@@ -840,7 +804,7 @@ resource Microsoft_Web_sites_config_functionAppName_web 'Microsoft.Web/sites/con
     functionsRuntimeScaleMonitoringEnabled: true
   }
   dependsOn: [
-
+    functionSubnet
     vnetName
   ]
 }

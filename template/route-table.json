@@ -1,0 +1,52 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "routeTables_pe_vm_name": {
+            "defaultValue": "pe-vm",
+            "type": "String"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Network/routeTables",
+            "apiVersion": "2020-11-01",
+            "name": "[parameters('routeTables_pe_vm_name')]",
+            "location": "eastus",
+            "tags": {
+                "Environment": "",
+                "Parent Business": "",
+                "Service Offering": ""
+            },
+            "properties": {
+                "disableBgpRoutePropagation": false,
+                "routes": [
+                    {
+                        "name": "pe-to-vm",
+                        "properties": {
+                            "addressPrefix": "10.10.0.0/24",
+                            "nextHopType": "VirtualAppliance",
+                            "nextHopIpAddress": "10.200.1.4",
+                            "hasBgpOverride": false
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/routeTables/routes",
+            "apiVersion": "2020-11-01",
+            "name": "[concat(parameters('routeTables_pe_vm_name'), '/pe-to-vm')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/routeTables', parameters('routeTables_pe_vm_name'))]"
+            ],
+            "properties": {
+                "addressPrefix": "10.10.0.0/24",
+                "nextHopType": "VirtualAppliance",
+                "nextHopIpAddress": "10.200.1.4",
+                "hasBgpOverride": false
+            }
+        }
+    ]
+}
