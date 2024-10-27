@@ -2,12 +2,6 @@
     "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "virtualMachineAdminUsername": {
-            "value": "defra"
-        },
-        "virtualMachineAdminPassword": {
-            "value": "Cookie2022@@"
-        },
         "cosmosDbDatabaseName": {
             "value": "Census"
         },
@@ -16,9 +10,6 @@
         },
         "blobContainerName": {
             "value": "census-results"
-        },
-        "function_repo_url": {
-            "value": "https://github.com/mcollier/azure-functions-private-storage.git"
         }
     }
 }

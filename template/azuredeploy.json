@@ -32,10 +32,6 @@
             "type": "string",
             "defaultValue": "10.100.0.0/16"
         },
-        "bastionSubnetAddressPrefix": {
-            "type": "string",
-            "defaultValue": "10.100.3.0/27"
-        },
         "virtualMachineSubnetAddressPrefix": {
             "type": "string",
             "defaultValue": "10.100.2.0/24"
@@ -76,10 +72,8 @@
         "vmSubnetName": "[concat(variables('uniqueStringId'), '-subnet-vm')]",
         "vmNsgName": "[concat(variables('uniqueStringId'), '-vm-nsg')]",
         "privateCosmosDbAccountName": "[concat(variables('uniqueStringId'), '-cosmosdb-private')]",
-        "bastionPublicIPAddressName": "[concat(variables('uniqueStringId'), '-bastion-pip')]",
+        "publicIPAddressName": "[concat(variables('uniqueStringId'), '-bastion-pip')]",
         "dnsLabelPrefix": "[concat('a', variables('uniqueStringId'), '-vm')]",
-        "bastionHostName": "[concat(variables('uniqueStringId'), '-bastion-host')]",
-        "bastionSubnetName": "AzureBastionSubnet",
         "appInsightsResourceId": "[resourceId('Microsoft.Insights/components', variables('applicationInsightsName'))]"
     },
     "resources": [
@@ -138,16 +132,6 @@
                             ],
                             "privateLinkServiceNetworkPolicies": "Enabled",
                             "privateEndpointNetworkPolicies": "Disabled"
-                        }
-                    },
-                    {
-                        "name": "[variables('bastionSubnetName')]",
-                        "properties": {
-                            "addressPrefix": "[parameters('bastionSubnetAddressPrefix')]",
-                            "delegations": [
-                            ],
-                            "privateEndpointNetworkPolicies": "Enabled",
-                            "privateLinkServiceNetworkPolicies": "Enabled"
                         }
                     }
                 ],
@@ -799,37 +783,13 @@
             }
         },
         {
-            "type": "Microsoft.Network/bastionHosts",
-            "name": "[variables('bastionHostName')]",
-            "apiVersion": "2019-11-01",
-            "location": "[parameters('location')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/publicIpAddresses', variables('bastionPublicIPAddressName'))]",
-                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-            ],
-            "properties": {
-                "ipConfigurations": [
-                    {
-                        "name": "IpConf",
-                        "properties": {
-                            "subnet": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('BastionSubnetName'))]"
-                            },
-                            "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIpAddresses', variables('bastionPublicIPAddressName'))]"
-                            }
-                        }
-                    }
-                ]
-            }
-        },
-        {
             "type": "Microsoft.Network/networkInterfaces",
             "apiVersion": "2018-11-01",
             "name": "[variables('vmNicName')]",
             "location": "[parameters('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+                "[resourceId('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
+                 "[resourceId('Microsoft.Network/publicIPAddresses/', variables('publicIPAddressName'))]"
             ],
             "properties": {
                 "ipConfigurations": [
@@ -837,6 +797,9 @@
                         "name": "ipconfig1",
                         "properties": {
                             "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('publicIPAddressName'))]"
+                            },
                             "subnet": {
                                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vmSubnetName'))]"
                             }
@@ -848,7 +811,7 @@
         {
             "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "2018-11-01",
-            "name": "[variables('bastionPublicIPAddressName')]",
+            "name": "[variables('publicIPAddressName')]",
             "location": "[parameters('location')]",
             "sku": {
                 "name": "Standard"
@@ -868,15 +831,15 @@
             "properties": {
                 "securityRules": [
                     {
-                        "name": "Block_RDP_Internet",
+                        "name": "Allow_RDP_Internet",
                         "properties": {
-                            "description": "Block RDP",
+                            "description": "Allow RDP",
                             "protocol": "Tcp",
                             "sourcePortRange": "*",
                             "destinationPortRange": "3389",
                             "sourceAddressPrefix": "Internet",
                             "destinationAddressPrefix": "*",
-                            "access": "Deny",
+                            "access": "Allow",
                             "priority": 101,
                             "direction": "Inbound"
                         }

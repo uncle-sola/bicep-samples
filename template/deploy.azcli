@@ -1,14 +1,99 @@
 az login
 
-az account set -s [YOUR-AZURE-SUBSCRIPTION-ID]
+# First deploy
+az account set -s cb5ab4a7-dd08-4be3-9d7e-9f68ae30f224
 
-az group create --name [YOUR-RESOURCE-GROUP-NAME] --location eastus
+az group create --name mon-bicep-samples-rg --location eastus
 
-az deployment group create -g [YOUR-RESOURCE-GROUP-NAME] --template-file azuredeploy.json --parameters azuredeploy.parameters.json
-
+az deployment group create -g mon-bicep-samples-rg --template-file azuredeploy.json --parameters azuredeploy.parameters.json
 
 
 ####
 cd ..\src
 dotnet build
-func azure functionapp publish [YOURE-FUNCTION-APP-NAME] --force --csharp
+func azure functionapp publish xxx-funcapp --force --csharp
+
+
+
+#Convert
+az bicep decompile --file azuredeploy.json 
+
+#Validate
+az deployment group validate -g mon-bicep-samples-rg --template-file azuredeploy.bicep --parameters azuredeploy.parameters.json
+
+
+# Second Deploy
+
+az account set -s b16cc792-dc1d-4942-ac9a-0ff659eb9f38
+
+az group create --name mon-bicep-samples-rg --location eastus
+
+az deployment group create -g mon-bicep-samples-rg --template-file azuredeploy.bicep --parameters azuredeploy.parameters.json
+
+
+####
+cd ..\src
+dotnet build
+func azure functionapp publish gws6acoestwyo-funcapp --force --csharp
+
+#refactor
+az account set -s cb5ab4a7-dd08-4be3-9d7e-9f68ae30f224
+
+az deployment group create -g mon-bicep-samples-rg --template-file azuredeploy-main-template.bicep --parameters azuredeploy.parameters.json
+
+
+####
+cd ..\src
+dotnet build
+func azure functionapp publish gws6acoestwyo-funcapp --force --csharp
+
+
+
+
+## vmstuff
+az account set -s cb5ab4a7-dd08-4be3-9d7e-9f68ae30f224
+
+
+az deployment group validate -g mon-bicep-samples-rg --template-file azuredeploy-vm-template.bicep --parameters azuredeploy.vm.parameters.json
+
+az deployment group create -g mon-bicep-samples-rg --template-file azuredeploy-vm-template.bicep --parameters azuredeploy.vm.parameters.json
+
+
+
+az account set -s e5f7dd5e-1d90-4344-9ad1-39f7811170c0
+
+
+az bicep decompile --file azuredeploy.json
+
+$id = "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/templateSpecsRG/providers/Microsoft.Resources/templateSpecs/storageSpec/versions/1.2a"
+
+New-AzResourceGroupDeployment `
+  -TemplateSpecId $id `
+  -ResourceGroupName demoRG
+
+
+## vmstuff
+## az account set -s cb5ab4a7-dd08-4be3-9d7e-9f68ae30f224
+az account set -s f3b14109-a3de-4f54-9f58-46d891380a7e
+
+az group create --name prg-bicep-samples-rg --location northeurope
+
+az deployment group validate -g prg-bicep-samples-rg --template-file azuredeploy-no-vm-template.bicep --parameters azuredeploy.no-vm.parameters.json
+
+az deployment group create -g prg-bicep-samples-rg --template-file azuredeploy-no-vm-template.bicep --parameters azuredeploy.no-vm.parameters.json
+
+####
+cd ..\src
+dotnet build
+func azure functionapp publish 6r75u7vsuk5u4-funcapp --force --csharp
+
+
+
+
+# 1) do the network peering to the hub network (VPN Gateway)
+# 2) route tble on vm/sub net (address prefix destination: IP addresses, 
+#                            Destination IP:10.100.1.0/24 (pe-subnet),  
+#                           next hop type: virtual appliance(VPN gateway), 
+#                            next hop address:10.10.3.36 (VPNGateway IP address))
+# 3) Create network virtual link on the pe private zone for storage account and cosmos and link the the vm VNet
+# 4) Jump on the vm to transfer files to the storage account
