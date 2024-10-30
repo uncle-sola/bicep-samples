@@ -1,0 +1,11 @@
+az login
+
+az account set --subscription ""
+
+// Using the list command and query argument you can obtain the name and location of your soft deleted APIM Instances
+
+az apim deletedservice list --query "[].[name, location]"
+
+// Since you now know the name and location of all the potential instances you wish to purge, you can now issue the purge command for each instance.
+
+az apim deletedservice purge --service-name "" --location "uksouth"
